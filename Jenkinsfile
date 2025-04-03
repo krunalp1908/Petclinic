@@ -82,7 +82,8 @@ pipeline {
                 }
             }
         }
-        
+
+        ''' docker run will not happen because this code is buiid for tomcat server. '''
         stage("Run docker image"){
             steps{
                 sh "docker run -d -p 8082:8082 krunalp19/petclinic-app:latest"
