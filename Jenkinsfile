@@ -1,20 +1,21 @@
+@Library('Shared') _
 pipeline {
     agent any 
     
     tools{
-        jdk 'jdk11'
+        jdk 'jdk17'
         maven 'maven3'
     }
     
     environment {
-        SCANNER_HOME=tool 'sonar-scanner'
+        SCANNER_HOME=tool 'Sonar'
     }
     
     stages{
         
         stage("Git Checkout"){
             steps{
-                git branch: 'main', changelog: false, poll: false, url: 'https://github.com/jaiswaladi246/Petclinic.git'
+                git branch: 'main', changelog: false, poll: false, url: 'https://github.com/krunalp1908/Petclinic.git'
             }
         }
         
@@ -30,52 +31,61 @@ pipeline {
             }
         }
         
+        stage("Trivy: Filesystem scan"){
+            steps{
+                script{
+                    trivy_scan()
+                }
+            }
+        }
+        
         stage("Sonarqube Analysis "){
             steps{
-                withSonarQubeEnv('sonar-server') {
+                withSonarQubeEnv('Sonar') {
                     sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Petclinic \
-                    -Dsonar.java.binaries=. \
-                    -Dsonar.projectKey=Petclinic '''
+                    -Dsonar.projectKey=Petclinic \
+                    -Dsonar.sources=. \
+                    -Dsonar.java.binaries=target/classes
+                     '''
     
                 }
             }
         }
         
-        stage("OWASP Dependency Check"){
-            steps{
-                dependencyCheck additionalArguments: '--scan ./ --format HTML ', odcInstallation: 'DP'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-            }
-        }
-        
-         stage("Build"){
-            steps{
-                sh " mvn clean install"
-            }
-        }
-        
-        stage("Docker Build & Push"){
+        stage("OWASP: Dependency check"){
             steps{
                 script{
-                   withDockerRegistry(credentialsId: '58be877c-9294-410e-98ee-6a959d73b352', toolName: 'docker') {
-                        
-                        sh "docker build -t image1 ."
-                        sh "docker tag image1 adijaiswal/pet-clinic123:latest "
-                        sh "docker push adijaiswal/pet-clinic123:latest "
-                    }
+                    owasp_dependency()
                 }
             }
         }
         
-        stage("TRIVY"){
+        stage("Build Artifact "){
             steps{
-                sh " trivy image adijaiswal/pet-clinic123:latest"
+                sh "mvn clean install"
             }
         }
         
-        stage("Deploy To Tomcat"){
+        stage("Docker: build images"){
             steps{
-                sh "cp  /var/lib/jenkins/workspace/CI-CD/target/petclinic.war /opt/apache-tomcat-9.0.65/webapps/ "
+                script{
+                    docker_build("petclinic-app","latest","krunalp19") 
+                }
+            }
+        }
+
+        
+        stage("Docker: Push to DockerHub"){
+            steps{
+                script{
+                    docker_push("petclinic-app","latest","krunalp19")
+                }
+            }
+        }
+        
+        stage("Run docker image"){
+            steps{
+                sh "docker run -d -p 8082:8082 krunalp19/petclinic-app:latest"
             }
         }
     }
